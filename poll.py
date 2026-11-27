@@ -11,6 +11,10 @@ from telethon.sessions import StringSession
 
 from common import bot_send, env, media_label, mostly_korean, translate_ko
 
+if not os.environ.get("TG_SESSION", "").strip():
+    print("TG_SESSION 이 아직 없습니다. login 워크플로를 먼저 실행해 주세요. (이번 실행은 건너뜀)")
+    raise SystemExit(0)
+
 KST = timezone(timedelta(hours=9))
 STATE = "state/state.json"
 
