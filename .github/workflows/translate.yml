@@ -11,7 +11,7 @@ permissions:
 jobs:
   poll:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -32,6 +32,8 @@ jobs:
           TG_SESSION: ${{ secrets.TG_SESSION }}
           CHAT_NAME: ${{ vars.CHAT_NAME }}
           SKIP_KOREAN: ${{ vars.SKIP_KOREAN }}
+          HISTORY_TOKEN: ${{ secrets.HISTORY_TOKEN }}
+          HISTORY_REPO: ${{ vars.HISTORY_REPO }}
       - uses: actions/cache/save@v4
         if: always()
         with:
