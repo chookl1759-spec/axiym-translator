@@ -132,6 +132,10 @@ def save_history(chat_name, entries):
     for e in entries:
         by_day.setdefault(e["time"][:10], []).append(e)
     headers = {"Authorization": f"Bearer {HISTORY_TOKEN}", "Accept": "application/vnd.github+json"}
+    # 안전장치: 기록 저장소가 비공개일 때만 저장
+    info = requests.get(f"https://api.github.com/repos/{HISTORY_REPO}", headers=headers, timeout=30)
+    if not info.ok or not info.json().get("private"):
+        raise RuntimeError("기록 저장소가 비공개가 아니어서 저장하지 않았습니다")
     for day, items in sorted(by_day.items()):
         path = f"history/{day[:7]}/{day}.md"
         url = f"https://api.github.com/repos/{HISTORY_REPO}/contents/{path}"
