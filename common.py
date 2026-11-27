@@ -43,9 +43,45 @@ def mostly_korean(text):
     return len(HANGUL.findall(text)) / len(letters) > 0.5
 
 
+LAST_ERROR = []
+
+
+def _gtx(chunk):
+    # 구글 번역 공개 엔드포인트 (서버에서도 비교적 잘 동작)
+    r = requests.post(
+        "https://translate.googleapis.com/translate_a/single",
+        params={"client": "gtx", "sl": "auto", "tl": "ko", "dt": "t"},
+        data={"q": chunk},
+        headers={"User-Agent": "Mozilla/5.0"},
+        timeout=30,
+    )
+    r.raise_for_status()
+    return "".join(part[0] for part in r.json()[0] if part and part[0])
+
+
+def _deep(chunk):
+    return GoogleTranslator(source="auto", target="ko").translate(chunk) or ""
+
+
+def _mymemory(chunk):
+    from deep_translator import MyMemoryTranslator
+    return MyMemoryTranslator(source="en-GB", target="ko-KR").translate(chunk) or ""
+
+
 def translate_ko(text):
-    tr = GoogleTranslator(source="auto", target="ko")
-    return "".join(tr.translate(text[i:i + 4500]) or "" for i in range(0, len(text), 4500))
+    out = []
+    for i in range(0, len(text), 1800):
+        chunk = text[i:i + 1800]
+        for fn in (_gtx, _gtx, _deep, _mymemory):
+            try:
+                out.append(fn(chunk))
+                break
+            except Exception as e:  # 내용은 남기지 않고 오류 종류만 기록
+                LAST_ERROR.append(f"{fn.__name__}:{type(e).__name__}:{getattr(getattr(e, 'response', None), 'status_code', '')}")
+                time.sleep(1)
+        else:
+            raise RuntimeError("all translators failed")
+    return "".join(out)
 
 
 def media_label(msg):

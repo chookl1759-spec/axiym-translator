@@ -12,7 +12,7 @@ import requests
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 
-from common import bot_send, env, media_label, mostly_korean, translate_ko
+from common import LAST_ERROR, bot_send, env, media_label, mostly_korean, translate_ko
 
 if not os.environ.get("TG_SESSION", "").strip():
     print("TG_SESSION 이 아직 없습니다. login 워크플로를 먼저 실행해 주세요. (이번 실행은 건너뜀)")
@@ -103,7 +103,7 @@ async def main():
             state["last_saved"] = True
     save_state(state)
     await client.disconnect()
-    print(f"보낸 알림 {count}건, 기록 {len(entries)}건")
+    print(f"보낸 알림 {count}건, 기록 {len(entries)}건, 번역 오류 종류: {sorted(set(LAST_ERROR))[:10]}")
 
 
 async def to_entry(msg):
