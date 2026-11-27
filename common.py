@@ -2,6 +2,7 @@
 import os
 import re
 import sys
+import time
 
 import requests
 from deep_translator import GoogleTranslator
@@ -18,8 +19,14 @@ def env(name, required=True, default=None):
 
 
 def bot_api(token, method, **data):
-    r = requests.post(f"https://api.telegram.org/bot{token}/{method}", data=data, timeout=60)
-    return r
+    # 가끔 연결이 끊기는 경우가 있어 최대 5번 재시도
+    for attempt in range(5):
+        try:
+            return requests.post(f"https://api.telegram.org/bot{token}/{method}", data=data, timeout=60)
+        except requests.exceptions.RequestException:
+            if attempt == 4:
+                raise
+            time.sleep(2 * (attempt + 1))
 
 
 def bot_send(token, chat_id, text):

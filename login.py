@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """텔레그램 로그인 (두 번 실행)
 1) code 칸을 비우고 실행 → 텔레그램으로 로그인 코드가 옵니다.
-2) code 칸에 받은 코드를 넣고 다시 실행 → 세션 문자열을 봇으로 보내 줍니다.
+2) code 칸에 받은 코드를 넣고 다시 실행 → 세션 문자열을 '저장된 메시지'로 보내 줍니다.
 텔레그램은 코드를 텔레그램 채팅으로 보내면 무효화하므로, 코드는 GitHub에만 입력하세요.
 """
 import asyncio
@@ -16,7 +16,7 @@ from telethon import TelegramClient
 from telethon.errors import SessionPasswordNeededError
 from telethon.sessions import StringSession
 
-from common import bot_send, env
+from common import env
 
 API_ID = int(env("API_ID"))
 API_HASH = env("API_HASH")
@@ -57,14 +57,14 @@ async def step2():
         if not PASSWORD:
             raise SystemExit("2단계 인증 비밀번호가 필요합니다. Secret TG_2FA 를 추가한 뒤 1단계부터 다시 해 주세요.")
         await client.sign_in(password=PASSWORD)
-    me = await client.get_me()
     session = client.session.save()
-    bot_send(BOT_TOKEN, me.id, "✅ 로그인 성공. 다음 메시지의 문자열 전체를 복사해서 GitHub Secret 'TG_SESSION' 에 넣으세요. "
-                                "계정 열쇠이니 공유하지 마시고, 넣은 뒤 두 메시지 모두 삭제하세요.")
-    bot_send(BOT_TOKEN, me.id, session)
+    # 세션 문자열은 현수님 '저장된 메시지(Saved Messages)'로 보냅니다 (봇보다 안정적)
+    await client.send_message("me", "✅ 로그인 성공. 다음 메시지의 문자열 전체를 복사해서 GitHub Secret 'TG_SESSION' 에 넣으세요. "
+                                    "계정 열쇠이니 공유하지 마시고, 넣은 뒤 두 메시지 모두 삭제하세요.")
+    await client.send_message("me", session)
     await client.disconnect()
     os.remove(TMP)
-    print("완료: 세션 문자열을 봇으로 보냈습니다.")
+    print("완료: 세션 문자열을 저장된 메시지로 보냈습니다.")
 
 
 asyncio.run(step2() if CODE else step1())
