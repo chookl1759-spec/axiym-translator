@@ -1,68 +1,70 @@
 # -*- coding: utf-8 -*-
-"""한 번만 실행: 텔레그램 로그인 후 세션 문자열을 봇으로 보내 줍니다."""
+"""텔레그램 로그인 (두 번 실행)
+1) code 칸을 비우고 실행 → 텔레그램으로 로그인 코드가 옵니다.
+2) code 칸에 받은 코드를 넣고 다시 실행 → 세션 문자열을 봇으로 보내 줍니다.
+텔레그램은 코드를 텔레그램 채팅으로 보내면 무효화하므로, 코드는 GitHub에만 입력하세요.
+"""
 import asyncio
+import base64
+import hashlib
+import json
+import os
 import re
-import time
 
+from cryptography.fernet import Fernet
 from telethon import TelegramClient
 from telethon.errors import SessionPasswordNeededError
 from telethon.sessions import StringSession
 
-from common import bot_api, bot_send, env
+from common import bot_send, env
 
 API_ID = int(env("API_ID"))
 API_HASH = env("API_HASH")
 BOT_TOKEN = env("BOT_TOKEN")
 PHONE = env("TG_PHONE")
 PASSWORD = env("TG_2FA", required=False)
-WAIT_SEC = 300
+CODE = re.sub(r"\D", "", os.environ.get("LOGIN_CODE", ""))
+TMP = "login_tmp/pending.bin"
+
+# 임시 로그인 정보는 비밀값으로 만든 키로 암호화해서 저장 (공개 저장소 대비)
+FERNET = Fernet(base64.urlsafe_b64encode(hashlib.sha256((API_HASH + BOT_TOKEN).encode()).digest()))
 
 
-def updates(offset=None):
-    r = bot_api(BOT_TOKEN, "getUpdates", timeout=0, **({"offset": offset} if offset else {}))
-    if r.status_code == 409:  # 웹훅이 걸려 있으면 해제
-        bot_api(BOT_TOKEN, "deleteWebhook")
-        r = bot_api(BOT_TOKEN, "getUpdates", timeout=0, **({"offset": offset} if offset else {}))
-    r.raise_for_status()
-    return r.json()["result"]
-
-
-def wait_for_code():
-    old = updates()
-    offset = old[-1]["update_id"] + 1 if old else None
-    deadline = time.time() + WAIT_SEC
-    while time.time() < deadline:
-        for u in updates(offset):
-            offset = u["update_id"] + 1
-            text = (u.get("message") or {}).get("text") or ""
-            digits = re.sub(r"\D", "", text)
-            if 5 <= len(digits) <= 6:
-                return digits, u["message"]["chat"]["id"]
-        time.sleep(3)
-    raise SystemExit("5분 안에 인증코드가 오지 않았습니다. 다시 실행해 주세요.")
-
-
-async def main():
+async def step1():
     client = TelegramClient(StringSession(), API_ID, API_HASH)
     await client.connect()
     sent = await client.send_code_request(PHONE)
-    print("인증코드를 보냈습니다. 텔레그램 봇에게 숫자 사이를 띄어 보내 주세요 (예: 1 2 3 4 5). 5분 기다립니다.")
-    code, chat_id = wait_for_code()
-    print("::add-mask::" + code)
+    data = json.dumps({"s": client.session.save(), "h": sent.phone_code_hash}).encode()
+    os.makedirs(os.path.dirname(TMP), exist_ok=True)
+    with open(TMP, "wb") as f:
+        f.write(FERNET.encrypt(data))
+    await client.disconnect()
+    print("텔레그램으로 로그인 코드를 보냈습니다. 코드를 텔레그램 채팅에 보내지 말고, "
+          "login 워크플로를 다시 실행하면서 code 칸에 입력하세요. (몇 분 안에)")
+
+
+async def step2():
     try:
-        await client.sign_in(PHONE, code, phone_code_hash=sent.phone_code_hash)
+        with open(TMP, "rb") as f:
+            data = json.loads(FERNET.decrypt(f.read()))
+    except Exception:
+        raise SystemExit("1단계 정보가 없습니다. code 칸을 비우고 다시 1단계부터 실행해 주세요.")
+    client = TelegramClient(StringSession(data["s"]), API_ID, API_HASH)
+    await client.connect()
+    try:
+        await client.sign_in(PHONE, CODE, phone_code_hash=data["h"])
     except SessionPasswordNeededError:
         if not PASSWORD:
-            bot_send(BOT_TOKEN, chat_id, "2단계 인증 비밀번호가 필요합니다. GitHub Secret TG_2FA 를 추가하고 다시 실행해 주세요.")
-            raise SystemExit("2단계 인증 비밀번호(TG_2FA) 필요")
+            raise SystemExit("2단계 인증 비밀번호가 필요합니다. Secret TG_2FA 를 추가한 뒤 1단계부터 다시 해 주세요.")
         await client.sign_in(password=PASSWORD)
     me = await client.get_me()
     session = client.session.save()
-    bot_send(BOT_TOKEN, me.id, "✅ 로그인 성공. 아래 문자열 전체를 복사해서 GitHub Secret 'TG_SESSION' 에 넣으세요. "
-                                "계정 열쇠이니 다른 곳에 공유하지 마시고, 넣은 뒤 이 메시지는 삭제하세요.")
+    bot_send(BOT_TOKEN, me.id, "✅ 로그인 성공. 다음 메시지의 문자열 전체를 복사해서 GitHub Secret 'TG_SESSION' 에 넣으세요. "
+                                "계정 열쇠이니 공유하지 마시고, 넣은 뒤 두 메시지 모두 삭제하세요.")
     bot_send(BOT_TOKEN, me.id, session)
     await client.disconnect()
+    os.remove(TMP)
     print("완료: 세션 문자열을 봇으로 보냈습니다.")
 
 
-asyncio.run(main())
+asyncio.run(step2() if CODE else step1())
